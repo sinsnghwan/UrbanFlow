@@ -1,0 +1,48 @@
+{
+  "sourceFile": "changsin_2grids_may5_analysis.gpkg",
+  "sourceSha256": "1a2109aaa37c2e9b394dbdbfc92d7f151018919e0bc3b94f38979c80f530a0b8",
+  "sourceType": "previously extracted analysis; original monthly CSV not rechecked",
+  "eventDate": "2026-05-05",
+  "window": "12–17시",
+  "normalBasis": "저장된 일반 화요일 비교값",
+  "rows": [
+    {
+      "fid": 1,
+      "CELL_ID": "다사56755250",
+      "CELL_X": 956875,
+      "CELL_Y": 1952625,
+      "POSITION": "북서",
+      "EVENT_AVG_12_17": 1741.9183333333333,
+      "NORMAL_AVG_12_17": 812.8761111111112,
+      "CHANGE_12_17_PCT": 114.2907522466523,
+      "EVENT_PEAK": 1939.4099999999999,
+      "PEAK_HOUR": 15,
+      "NORMAL_AT_PEAK": 869.71,
+      "CHANGE_AT_PEAK_PCT": 122.99502132894871,
+      "NOTE": "종로52길과 실제 중첩 여부를 QGIS에서 확인",
+      "ANALYSIS_SCOPE": "종로52길 후보 구간",
+      "KEEP_REASON": "종로52길 서쪽 구간과 문구완구거리 일부 포함"
+    },
+    {
+      "fid": 2,
+      "CELL_ID": "다사57005250",
+      "CELL_X": 957125,
+      "CELL_Y": 1952625,
+      "POSITION": "북중앙",
+      "EVENT_AVG_12_17": 1098.0666666666666,
+      "NORMAL_AVG_12_17": 1754.0661111111112,
+      "CHANGE_12_17_PCT": -37.39878675547198,
+      "EVENT_PEAK": 1265.05,
+      "PEAK_HOUR": 15,
+      "NORMAL_AT_PEAK": 1837.57,
+      "CHANGE_AT_PEAK_PCT": -31.156364111299162,
+      "NOTE": "종로52길과 실제 중첩 여부를 QGIS에서 확인",
+      "ANALYSIS_SCOPE": "종로52길 후보 구간",
+      "KEEP_REASON": "종로52길 동쪽 구간과 문구완구거리 일부 포함"
+    }
+  ],
+  "totalEventMean": 2839.9849999999997,
+  "totalNormalMean": 2566.9422222222224,
+  "changePercent": 10.636888334066285,
+  "use": "주변 수요 배경 전용; 골목 인원·밀도·분당 유입량으로 변환하지 않음"
+}
