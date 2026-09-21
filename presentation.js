@@ -35,7 +35,14 @@ export function organizeWorkspace(){
   const comparison=document.createElement('div');comparison.className='population-context';comparison.textContent='저장된 주변 수요 비교자료를 불러오는 중입니다.';evidence.append(comparison);
   fetch('./population-context.json').then(response=>{if(!response.ok)throw new Error('자료 요청 실패');return response.json();}).then(data=>{
     const fmt=n=>Number(n).toLocaleString('ko-KR',{maximumFractionDigits:1});
-    comparison.innerHTML=`<p><b>2026년 5월 5일 · ${data.window} 평균 생활인구</b></p><div class="segment-table-wrap"><table><thead><tr><th>250m 격자</th><th>일반 화요일</th><th>어린이날</th><th>증감</th></tr></thead><tbody>${data.rows.map(row=>`<tr><td>${row.POSITION}</td><td>${fmt(row.NORMAL_AVG_12_17)}명</td><td>${fmt(row.EVENT_AVG_12_17)}명</td><td>${fmt(row.CHANGE_12_17_PCT)}%</td></tr>`).join('')}<tr><td>두 격자 합계</td><td>${fmt(data.totalNormalMean)}명</td><td>${fmt(data.totalEventMean)}명</td><td>${fmt(data.changePercent)}%</td></tr></tbody></table></div><p class="evidence-status">주변 두 격자의 평균 생활인구 합계이며 누적 방문객이나 골목 안 인원이 아닙니다. 저장된 분석 GPKG를 연결했습니다. 일반 화요일의 날짜 목록·월간 원본 CSV는 이번 작업에서 재대조하지 못했습니다.</p>`;
+    const changeCell=value=>`<td class="population-change ${value>0?'is-increase':value<0?'is-decrease':''}">${value>0?'+':''}${fmt(value)}</td>`;
+    comparison.innerHTML=`<table class="population-table">
+      <caption><strong>평균 생활인구</strong><span>2026년 5월 5일 · ${data.window} 평균</span></caption>
+      <colgroup><col class="population-position-column"><col class="population-count-column"><col class="population-count-column"><col class="population-change-column"></colgroup>
+      <thead><tr><th scope="col">250m 격자</th><th scope="col">일반 화요일<span class="population-unit">(명)</span></th><th scope="col">어린이날<span class="population-unit">(명)</span></th><th scope="col">증감<span class="population-unit">(%)</span></th></tr></thead>
+      <tbody>${data.rows.map(row=>`<tr><th scope="row">${row.POSITION}</th><td>${fmt(row.NORMAL_AVG_12_17)}</td><td>${fmt(row.EVENT_AVG_12_17)}</td>${changeCell(row.CHANGE_12_17_PCT)}</tr>`).join('')}</tbody>
+      <tfoot><tr><th scope="row">두 격자 합계</th><td>${fmt(data.totalNormalMean)}</td><td>${fmt(data.totalEventMean)}</td>${changeCell(data.changePercent)}</tr></tfoot>
+    </table><p class="evidence-status">주변 두 격자의 평균 생활인구 합계이며 누적 방문객이나 골목 안 인원이 아닙니다. 저장된 분석 GPKG를 연결했습니다. 일반 화요일의 날짜 목록·월간 원본 CSV는 이번 작업에서 재대조하지 못했습니다.</p>`;
   }).catch(()=>{comparison.textContent='주변 수요 비교자료를 불러오지 못했습니다. 새로고침 후 다시 확인하세요.';});
   const note=document.createElement('p');note.className='evidence-status';note.textContent='2026 어린이날과 평상시의 실제 비교: 미확정. 두 격자 생활인구는 주변 수요 배경이며, 입구별 시간대 통행 계수가 없어 골목 접근 명/분으로 연결하지 않았습니다. 위 평상시·혼잡일 버튼은 가정 시나리오입니다.';evidence.append(note);
   note.textContent='주변 생활인구 비교는 연결 완료. 실제 골목 수요와 처리량 비교는 입구별 계수 미확보로 미확정입니다. 위 평상시·혼잡일 버튼은 계속 가정 시나리오로 작동합니다.';
@@ -95,7 +102,8 @@ export function organizeWorkspace(){
   const refill=document.getElementById('baseline-fill-rate').closest('fieldset');
   const duration=document.getElementById('analysis-minutes').closest('fieldset');
   duration.classList.add('primary-duration');
-  duration.querySelector('legend').innerHTML='<span class="step-number">2</span> 실행 시간 선택';
+  duration.querySelector('legend').innerHTML='<span class="step-number">2</span> 총 관찰 시간';
+  duration.querySelector('label').textContent='총 관찰 시간 (0분부터)';
   demand.after(duration);
   duration.after(runTitle);
   runTitle.after(runDesk);
@@ -116,6 +124,11 @@ export function organizeWorkspace(){
   const hint=document.createElement('p');hint.className='run-hint';hint.id="run-hint";
   hint.innerHTML='<b>3. 시작</b> 버튼을 누르면 지도와 위쪽 결과가 함께 갱신됩니다.';
   runDesk.append(hint);
+  const continuation=document.createElement('div');continuation.className='run-continuation';continuation.id='run-continuation';continuation.hidden=true;
+  continuation.innerHTML='<label for="continuation-minutes">추가 관찰 시간</label><select id="continuation-minutes"><option value="10">10분 더</option><option value="30" selected>30분 더</option><option value="60">60분 더</option><option value="120">120분 더</option><option value="0">제한 없이 계속</option></select><p id="continuation-range"></p>';
+  runDesk.prepend(continuation);
+  const runStatus=document.createElement('p');runStatus.className='run-status';runStatus.id='run-status';runStatus.setAttribute('role','status');
+  runDesk.append(runStatus);
 
   document.getElementById('next-experiment').addEventListener('click',()=>{
     document.dispatchEvent(new Event('show-scenario-settings'));

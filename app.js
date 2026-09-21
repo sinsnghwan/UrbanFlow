@@ -1,6 +1,6 @@
 import {WalkSimulation,validateConfig,LIMITS,NORTH_SIDEWALK_WIDTH_M} from './network-simulation.js';
 import {StreetRenderer} from './network-renderer.js';
-import {organizeWorkspace} from './presentation.js';
+import {organizeWorkspace} from './presentation.js?v=20260921-continue';
 import {ExperimentLog} from './experiment-log.js';
 import {experimentUI} from './experiment-ui.js';
 import {autoExploreUI} from './auto-explore-ui.js';
@@ -108,6 +108,7 @@ function updateOutputs(){
     $('analysis-length').textContent=`약 ${number(sim.studyLengthM)}m`;$('effective-area-main').textContent=`${number(sim.area)}㎡`;
     $('minimum-width-main').textContent=`${number(main.minimumEffectiveWidthM,1)}m`;$('flow-capacity-main').textContent=`${number(main.flowCapacityPerMinute)}명/분`;
     $('effective-area').textContent=`약 ${number(sim.area,1)}`;$('min-width').textContent=`${number(main.minimumEffectiveWidthM,1)} m`;$('store-capacity-total').textContent=`${number(sim.totalStoreCapacity)}명`;
+    updatePlaybackControls();
   }
 }
 function updateResponseGuide(st){
@@ -205,7 +206,37 @@ function updateMetrics(){
   $('store-hotspots').innerHTML=activeStores.length?activeStores.map(store=>`<span><b>${store.id}</b> ${store.occupancy}/${store.capacity}명${store.waiting?` · 대기 ${store.waiting}`:''}</span>`).join(''):'아직 매장 방문 없음';
   updateResponseGuide(st);
 }
-function setRunning(value){running=Boolean(value);if(running&&experiments.active)experiments.active.status='recording';if(!running&&sim){experiments.sample(sim,true);experiments.save();experimentView.render();}const started=Boolean(sim&&sim.time>0);$('play').textContent=running?'Ⅱ 일시정지':started?'▶ 계속 실행':'시뮬레이션 시작';$('play').setAttribute('aria-pressed',String(running));}
+function reachedTimeLimit(){
+  const limit=sim?.config.analysisMinutes*60;
+  return Boolean(limit&&sim.time>=limit-1e-6);
+}
+function continuationTarget(minutes=Number($('continuation-minutes').value)){
+  return minutes?Math.ceil((sim.time-1e-6)/60)+minutes:0;
+}
+function updatePlaybackControls(){
+  if(!sim)return;
+  const finished=Boolean(experiments.active&&reachedTimeLimit());
+  $('run-continuation').hidden=!finished;
+  if(finished){
+    for(const option of $('continuation-minutes').options)option.disabled=continuationTarget(Number(option.value))>LIMITS.analysisMinutes[1];
+    if($('continuation-minutes').selectedOptions[0].disabled)$('continuation-minutes').value='0';
+    const target=continuationTarget();
+    $('continuation-range').textContent=target?`현재 ${number(sim.time/60,1)}분 → 총 ${number(target)}분까지 관찰`:`현재 ${number(sim.time/60,1)}분부터 제한 없이 관찰`;
+  }
+  $('play').textContent=running?'Ⅱ 일시정지':!experiments.active?'새 실험 시작':finished?'▶ 이어서 실행':sim.time>0?'▶ 계속 실행':'시뮬레이션 시작';
+  $('play').setAttribute('aria-pressed',String(running));
+  const message=!experiments.active?'현재 실험 기록이 삭제되었습니다. 다음 실행은 0분부터 새로 시작합니다.':finished
+    ?`${number(sim.time/60,1)}분 관찰 종료 · 현재 인원과 대기를 유지합니다. 조건을 바꾼 뒤 이어서 실행하세요.`
+    :sim.time>0?`${sim.config.analysisMinutes?`총 ${number(sim.config.analysisMinutes)}분까지`:'시간 제한 없이'} 관찰합니다. 조건 변경 전후의 결과는 같은 실험에 누적됩니다.`
+    :'시간이 끝나면 멈춥니다. 현재 상태에서 연장하거나 ‘처음부터’ 새로 실행할 수 있습니다.';
+  if($('run-status').textContent!==message)$('run-status').textContent=message;
+}
+function setRunning(value){
+  running=Boolean(value);
+  if(running&&experiments.active)experiments.active.status='recording';
+  if(sim){experiments.sample(sim,true);experiments.save();experimentView.render();}
+  updatePlaybackControls();
+}
 function reset(){
   if(!scene)return;if(sim)experiments.finish(sim,'restarted');sim=new WalkSimulation(scene,values(),excluded);experiments.begin(sim);experimentView.newRun();renderer.updateGeometry(sim);accumulator=0;
   $('run-hint').textContent='현재 조건으로 새로 비교하려면 ‘처음부터’를 누르세요.';
@@ -237,18 +268,20 @@ function replayPattern(replay){
   setRunning(true);
 }
 function reconfigure(){
-  if(!scene)return;
-  if(!sim){reset();return;}
+  if(!scene)return false;
+  if(!sim){reset();return true;}
   try{
     experiments.sample(sim,true);
     sim=WalkSimulation.reconfiguredFrom(sim,values(),excluded);
     experiments.change(sim);experimentView.render();
     renderer.updateGeometry(sim,true);accumulator=Math.min(accumulator,.099);
     updateOutputs();updateMetrics();renderer.draw(sim,0);
+    return true;
   }catch(error){
     excluded=new Set(sim.excluded);renderer.excluded=excluded;renderer.dirty=true;
     for(const [key,id]of Object.entries(fields))$(id).value=sim.config[key];
     updateOutputs();$('status-note').textContent=error.message;
+    return false;
   }
 }
 function updateSolutionUI(message=''){
@@ -280,14 +313,13 @@ function animate(now){
   if(sim&&running&&!document.hidden){
     const scale=Number($('speed').value);modelDt=wallDt*scale;accumulator+=modelDt;
     let steps=0;
-    const limit=sim.config.analysisMinutes*60;
-    while(accumulator>=.1&&steps<60){sim.update(.1);experiments.sample(sim);accumulator-=.1;steps++;if(limit&&sim.time>=limit){setRunning(false);experiments.complete(sim);experimentView.render();break;}}
+    while(accumulator>=.1&&steps<60&&!reachedTimeLimit()){sim.update(.1);experiments.sample(sim);accumulator-=.1;steps++;}
+    if(reachedTimeLimit()){accumulator=0;experiments.complete(sim);setRunning(false);}
   }
   if(sim){
     renderer.draw(sim,running?Math.max(wallDt,modelDt):0);
     uiElapsed+=wallDt;if(uiElapsed>.2){updateMetrics();uiElapsed=0;}
-    const limit=sim.config.analysisMinutes*60;
-    if(limit&&sim.time>=limit)$('status-note').textContent=`설정한 ${sim.config.analysisMinutes}분 분석이 끝났어요. 결과표를 확인하거나 ‘처음부터’로 같은 조건을 다시 실행하세요.`;
+    if(reachedTimeLimit())$('status-note').textContent=`${number(sim.time/60,1)}분 관찰이 끝났어요. 현재 인원과 대기는 유지됩니다. 조건을 바꾸고 추가 관찰 시간을 선택해 ‘이어서 실행’하거나, ‘처음부터’ 새 실험을 시작하세요.`;
   }
   if(sim&&now-lastLogSave>5000){experiments.save();experimentView.render();lastLogSave=now;}
   raf=requestAnimationFrame(animate);
@@ -316,7 +348,7 @@ function explanation(){
     <p>지도에 보이던 0.55m 격자 줄무늬와 출입구 배지는 실제 벽이 아니어서 화면에서 제거했습니다. 도로는 평평한 한 면으로 표시하고, 보행자 점은 칸 사이를 일정한 속도로 이어서 그립니다. 확대 후 드래그로 지도를 이동할 수 있어요.</p>
     <p>인도 가장자리에서 몸의 중심을 0.22m 띄우며, 골목 가장자리 제외 폭에는 최소 0.22m를 적용합니다. 0.55m 격자로 공간을 근사하기 때문에 아주 좁은 통로의 연결과 통과량은 격자 해상도의 영향을 받습니다. 실행 평균 인원은 매 0.1초 완구거리 안 인원을 시간가중 평균한 값입니다.</p>
     <h3>체류와 통과를 분리해 계산해요</h3><p>완구거리 A–J, 가운데 연결길 C–M, 오른쪽 연결길 D–J를 각각 평가합니다. 임의로 같은 길이의 5조각으로 나누던 방식은 없앴습니다. 각 길의 길이와 유효면적은 0.55m 보행격자에서 계산하고, 2m 간격 단면 폭 중 하위 10%를 ‘대표 최소 유효폭’으로 사용해 한 칸짜리 도형 오차가 병목값을 결정하지 않게 했습니다.</p><p>동시 체류 기준은 유효면적 × 선택 밀도입니다. 통과 처리 비교값은 대표 최소 유효폭 × 30명/분/m입니다. 30명/분/m는 국내 도로용량편람의 보행 서비스수준 E 경계를 인용한 연구값을 비교선으로 쓴 것이며, 법정 안전 한도나 현장 보증값이 아닙니다. 실제 적용에는 첨두 15분 현장 통행량과 실측 유효폭으로 보정해야 합니다.</p><p>지도 색면과 글자는 표시일 뿐 보행 칸, 충돌, 이동 경로에는 영향을 주지 않습니다. 기준 목표 인원과 혼잡일 추가 수요를 분리하고, 누적 요청·진입·이탈·최대 대기·최대 구간 인원·기준 초과 시간을 함께 계산합니다.</p><p>국지 밀도는 거리 안 각 보행자 주변 반경 2m에서 실제로 열려 있는 보행 칸의 면적과 그 안의 사람 수를 1초마다 비교한 모형값입니다. 지도에는 현재 가장 높은 한 지점만 표시합니다. 현장 계측값이나 법정 혼잡 판정 기준은 아닙니다.</p>
-    <h3>설정은 현재 실행에 이어서 적용돼요</h3><p>수요·건물·매대·통행·시간 수치를 바꿔도 현재 사람과 경과 시간을 초기화하지 않습니다. 다만 서로 다른 시나리오를 공정하게 비교하려면 조건을 고른 뒤 ‘처음부터’로 같은 시간만큼 실행해야 합니다.</p>
+    <h3>설정은 현재 실행에 이어서 적용돼요</h3><p>수요·건물·매대·통행·시간 수치를 바꿔도 현재 사람과 경과 시간을 초기화하지 않습니다. 총 관찰 시간이 끝나도 추가 관찰 시간을 선택하고 ‘이어서 실행’하면 현재 혼잡 상태에서 조치 효과를 볼 수 있습니다. 이전 기록과 변경 이후 기록은 같은 실험에 누적됩니다. 서로 다른 시작 조건을 비교하려면 조건을 고른 뒤 ‘처음부터’로 같은 시간만큼 실행하세요.</p>
     <h3>원하는 공간을 직접 제외</h3><p>지도에서 공간 줄이기를 누르고 원하는 부분을 칠하면 해당 칸을 보행 공간에서 제외합니다. 여러 위치를 자유롭게 지정하고 복원할 수 있습니다. 편집 중에는 일시정지하고 손을 떼면 현재 사람과 시간을 유지한 채 새 공간 조건을 적용합니다. W·E·R·S와 A·C·D·M·J 주변은 모든 길의 연결을 보장하기 위해 보호하며, 그 외를 가로질러 완전히 칠하면 해당 통로는 실제로 끊깁니다. 이 편집은 현재 페이지에서 유지됩니다.</p><h3>지표의 범위</h3>
     <ul><li>완구거리 안 인원: 기존 A–B 도형 안에 현재 있는 모의 인원입니다.</li><li>실행 평균 인원: 실행 시작부터 현재까지 완구거리 안 인원의 시간가중 평균입니다.</li><li>인도·연결길 대기: 분석 구간 밖에서 1초 이상 정체한 사람과 외부 경계에서 진입을 기다리는 사람의 합입니다.</li><li>최근 1분 구간 이탈: 완구거리 분석 경계 밖으로 나간 모의 인원입니다.</li><li>구간 평균 체류: 실행 후 새로 유입되어 분석 구간에서 나간 사람의 구간 내 체류 시간입니다.</li><li>참고 인원: 분석 구간 안의 사용 가능한 칸 면적 × 설정 밀도이며 안전 한도 판정값은 아닙니다.</li></ul>
     <p>원본 A–B 도로경계 면적은 ${number(scene.roadBoundaryAreaM2,1)}㎡입니다. 생활인구 250m 격자를 골목 인원이나 밀도로 사용하지 않았으며, 현장 검증과 실제 인파 재현은 아직 하지 않았습니다.</p>`;
@@ -365,7 +397,22 @@ function setScenarioOpen(open,restoreFocus=false){
 $('scenario-toggle').addEventListener('click',()=>setScenarioOpen(true));
 $('scenario-close').addEventListener('click',()=>setScenarioOpen(false,true));
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('scenario-controls').classList.contains('is-open'))setScenarioOpen(false,true);});
-$('play').addEventListener('click',()=>{if(editMode){setEdit(null);setRunning(true);return;}const limit=sim?.config.analysisMinutes*60;if(!experiments.active||(limit&&sim?.time>=limit)){reset();setRunning(true);return;}setRunning(!running);});
+$('continuation-minutes').addEventListener('change',updatePlaybackControls);
+$('play').addEventListener('click',()=>{
+  if(editMode){wasRunning=false;setEdit(null);}
+  else if(running){setRunning(false);return;}
+  // Apply a just-edited field before resuming, even during its input debounce.
+  clearTimeout(restartTimer);
+  if(!reconfigure())return;
+  if(!experiments.active){reset();setRunning(true);return;}
+  if(reachedTimeLimit()){
+    const target=continuationTarget(),control=$('analysis-minutes');
+    if(![...control.options].some(option=>Number(option.value)===target))control.add(new Option(`${target}분`,String(target)));
+    control.value=String(target);
+    if(!reconfigure())return;
+  }
+  setRunning(true);
+});
 $('reset').addEventListener('click',()=>{clearTimeout(restartTimer);reset();});
 $('historical-scenario').addEventListener('change',()=>{
   const selected=$('historical-scenario').value;
